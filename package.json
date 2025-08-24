@@ -1,0 +1,23 @@
+{
+    "name": "realize-it-backend",
+    "module": "index.ts",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "start": "bun index.js"
+    },
+    "devDependencies": {
+        "@trivago/prettier-plugin-sort-imports": "^5.2.2",
+        "@types/bun": "latest",
+        "prettier": "^3.6.2"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "dependencies": {
+        "cloudinary": "^2.7.0",
+        "dotenv": "^17.2.1",
+        "openai": "^5.15.0",
+        "path": "^0.12.7"
+    }
+}
