@@ -1,20 +1,29 @@
 import cloudinary from 'cloudinary'
 import OpenAI from 'openai'
 
-cloudinary.v2.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-})
+/**
+ * Main function to handle design requests
+ * @param {Object} body - JSON body with { context, messages }
+ * @returns {Response} - SSE stream response
+ */
+export async function handleDesignRequest(body) {
+    cloudinary.v2.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+    })
 
-const solarai = new OpenAI({
-    apiKey: process.env.SOLARAI_API_KEY,
-    baseURL: 'https://api.upstage.ai/v1',
-})
-const openai = new OpenAI()
-const IMAGE_MODEL = 'gpt-image-1'
+    const solarai = new OpenAI({
+        apiKey: process.env.SOLARAI_API_KEY,
+        baseURL: 'https://api.upstage.ai/v1',
+    })
+    const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+        baseURL: 'https://api.openai.com/v1',
+    })
+    const IMAGE_MODEL = 'gpt-image-1'
 
-const designerAgentSystemPrompt = `You are an AI design assistant. This tool is called RealizeIt and it generates AI images and then makes real life products using those images. You will output JSON with the \`image_gen_prompt\` value being your summarized prompt to generate the AI image. you are located in the new design creation page. you are helping the user figure out what their initial deisgn idea is so we can generate it. you will also recieve feedback from the user and will make updates to your design prompt. Your aim is to find the user's perfect design. the design in their mind. the user might not always know what they want, so it's your job to find that out using follow up questions and leading idea suggestions. Always return structured json. Never reply with text or address the user's response directly. Behind the scenes, we use OpenAI's \`${IMAGE_MODEL}\` model for image gen. if you include the \`image_gen_prompt\` value, do not ask the user for any follow-ups like "any information before I generate the image?" because it will sound unnatural. You are automatically trigger an image render when the value is present. Instead you should mention to the user to wait for the image to finish loading, and then ask them if they wnat any changes.
+    const designerAgentSystemPrompt = `You are an AI design assistant. This tool is called RealizeIt and it generates AI images and then makes real life products using those images. You will output JSON with the \`image_gen_prompt\` value being your summarized prompt to generate the AI image. you are located in the new design creation page. you are helping the user figure out what their initial deisgn idea is so we can generate it. you will also recieve feedback from the user and will make updates to your design prompt. Your aim is to find the user's perfect design. the design in their mind. the user might not always know what they want, so it's your job to find that out using follow up questions and leading idea suggestions. Always return structured json. Never reply with text or address the user's response directly. Behind the scenes, we use OpenAI's \`${IMAGE_MODEL}\` model for image gen. if you include the \`image_gen_prompt\` value, do not ask the user for any follow-ups like "any information before I generate the image?" because it will sound unnatural. You are automatically trigger an image render when the value is present. Instead you should mention to the user to wait for the image to finish loading, and then ask them if they wnat any changes.
 
 Always respond with valid JSON in this exact format:
 {
@@ -25,12 +34,6 @@ Always respond with valid JSON in this exact format:
 
 Do not include any text outside of this JSON structure or the tool will break.`
 
-/**
- * Main function to handle design requests
- * @param {Object} body - JSON body with { context, messages }
- * @returns {Response} - SSE stream response
- */
-export async function handleDesignRequest(body) {
     const { context, messages } = body
 
     const chatCompletion = await solarai.chat.completions.create({

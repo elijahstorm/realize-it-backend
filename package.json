@@ -4,7 +4,7 @@
     "type": "module",
     "private": true,
     "scripts": {
-        "start": "bun index.js"
+        "start": "node index.js"
     },
     "devDependencies": {
         "@trivago/prettier-plugin-sort-imports": "^5.2.2",
