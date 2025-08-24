@@ -1,11 +1,6 @@
 import cloudinary from 'cloudinary'
 import OpenAI from 'openai'
 
-/**
- * Main function to handle design requests
- * @param {Object} body - JSON body with { context, messages }
- * @returns {Response} - SSE stream response
- */
 export async function handleDesignRequest(body) {
     cloudinary.v2.config({
         cloud_name: process.env.CLOUDINARY_CLOUD_NAME,

@@ -18,16 +18,15 @@ app.get('/health', (req, res) => res.send('OK'))
 // API endpoint
 app.post('/api/gen-image', async (req, res) => {
     try {
-        res.setHeader('Content-Type', 'application/json') // or 'text/event-stream' if using SSE
+        res.setHeader('Content-Type', 'application/json')
         res.setHeader('Cache-Control', 'no-cache')
         res.setHeader('Connection', 'keep-alive')
 
-        // If handleDesignRequest yields chunks:
         for await (const chunk of handleDesignRequest(req.body)) {
-            res.write(JSON.stringify(chunk) + '\n') // send each chunk
+            res.write(JSON.stringify(chunk) + '\n')
         }
 
-        res.end() // close stream
+        res.end()
     } catch (err) {
         console.error(err)
         if (!res.headersSent) {
