@@ -1,4 +1,7 @@
 import { handleDesignRequest } from './app/designer-agent.js'
+import { configDotenv } from 'dotenv'
+
+configDotenv()
 
 function withCORS(res) {
     res.headers.set('Access-Control-Allow-Origin', '*')

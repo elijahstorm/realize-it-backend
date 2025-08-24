@@ -105,15 +105,13 @@ export async function handleDesignRequest(body) {
                                 }
 
                                 const image_base64 = result.data[0].b64_json
-                                const image_bytes = Buffer.from(image_base64, 'base64')
 
-                                const uploadRes = await new Promise((resolve, reject) => {
-                                    const upload = cloudinary.v2.uploader.upload_stream(
-                                        { folder: process.env.CLOUDINARY_FOLDER },
-                                        (err, res) => (err ? reject(err) : resolve(res))
-                                    )
-                                    upload.end(image_bytes)
-                                })
+                                const uploadRes = await cloudinary.v2.uploader.upload(
+                                    `data:image/png;base64,${image_base64}`,
+                                    {
+                                        folder: process.env.CLOUDINARY_FOLDER,
+                                    }
+                                )
 
                                 const doneChunk = JSON.stringify({
                                     image_status: 'done',
@@ -126,6 +124,7 @@ export async function handleDesignRequest(body) {
                                     new TextEncoder().encode(`data: ${doneChunk}\n\n`)
                                 )
                             } catch (imageError) {
+                                console.error(imageError)
                                 const errorChunk = JSON.stringify({
                                     image_status: 'error',
                                     image_error: imageError.message,
