@@ -26,20 +26,20 @@ app.get('/health', (req, res) => res.send('OK'))
 // API endpoint
 app.post('/api/gen-image', async (req, res) => {
     try {
-        res.setHeader('Content-Type', 'application/json')
+        res.setHeader('Content-Type', 'text/event-stream')
         res.setHeader('Cache-Control', 'no-cache')
         res.setHeader('Connection', 'keep-alive')
 
         for await (const chunk of handleDesignRequest(req.body)) {
-            res.write(JSON.stringify(chunk) + '\n')
+            res.write(`data: ${JSON.stringify(chunk)}\n\n`)
         }
 
         res.end()
     } catch (err) {
         console.error(err)
-        if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' })
+        if (!res.headersSent) res.status(500).json({ error: err.message })
         else {
-            res.write(JSON.stringify({ error: 'Internal Server Error' }))
+            res.write(JSON.stringify({ error: err.message }))
             res.end()
         }
     }

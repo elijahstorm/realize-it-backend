@@ -12,11 +12,14 @@ export async function* handleDesignRequest(body) {
         apiKey: process.env.SOLARAI_API_KEY,
         baseURL: 'https://api.upstage.ai/v1',
     })
+
     const openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY,
-        baseURL: 'https://api.openai.com/v1',
     })
+
     const IMAGE_MODEL = 'gpt-image-1'
+
+    const { context, messages } = body
 
     const designerAgentSystemPrompt = `You are an AI design assistant. This tool is called RealizeIt and it generates AI images and then makes real life products using those images. You will output JSON with the \`image_gen_prompt\` value being your summarized prompt to generate the AI image. you are located in the new design creation page. you are helping the user figure out what their initial deisgn idea is so we can generate it. you will also recieve feedback from the user and will make updates to your design prompt. Your aim is to find the user's perfect design. the design in their mind. the user might not always know what they want, so it's your job to find that out using follow up questions and leading idea suggestions. Always return structured json. Never reply with text or address the user's response directly. Behind the scenes, we use OpenAI's \`${IMAGE_MODEL}\` model for image gen. if you include the \`image_gen_prompt\` value, do not ask the user for any follow-ups like "any information before I generate the image?" because it will sound unnatural. You are automatically trigger an image render when the value is present. Instead you should mention to the user to wait for the image to finish loading, and then ask them if they wnat any changes.
 
@@ -29,8 +32,6 @@ Always respond with valid JSON in this exact format:
 
 Do not include any text outside of this JSON structure or the tool will break.`
 
-    const { context, messages } = body
-
     const chatCompletion = await solarai.chat.completions.create({
         model: 'solar-pro2',
         messages: [
@@ -41,165 +42,75 @@ Do not include any text outside of this JSON structure or the tool will break.`
         stream: true,
     })
 
-    const stream = new ReadableStream({
-        async start(controller) {
-            try {
-                let accumulatedContent = ''
-                let lastSentContentLength = 0
-                let imageGenerationTriggered = false
+    let accumulatedContent = ''
+    let lastSentLength = 0
+    let imageTriggered = false
 
-                console.log('entering')
+    for await (const chunk of chatCompletion) {
+        const content = chunk.choices[0]?.delta?.content || ''
+        accumulatedContent += content
 
-                for await (const chunk of chatCompletion) {
-                    const content = chunk.choices[0]?.delta?.content || ''
-                    accumulatedContent += content
+        // Progressive content streaming
+        const contentMatch = accumulatedContent.match(/"content":\s*"([^"\\]*(\\.[^"\\]*)*)"/)
+        if (contentMatch && contentMatch[1].length > lastSentLength) {
+            const newContent = contentMatch[1].slice(lastSentLength)
+            lastSentLength = contentMatch[1].length
+            yield { content: newContent, streaming: true }
+        }
 
-                    console.log('채ㅜㅅ둣', content)
+        // Try parsing completed JSON
+        try {
+            const parsed = JSON.parse(accumulatedContent)
 
-                    // Progressive streaming
-                    const contentMatch = accumulatedContent.match(
-                        /"content":\s*"([^"\\]*(\\.[^"\\]*)*)"/
+            // Trigger image generation if prompt exists
+            if (parsed.image_gen_prompt && !imageTriggered) {
+                imageTriggered = true
+                yield { image_status: 'gen', image_prompt: parsed.image_gen_prompt }
+
+                try {
+                    const result = await openai.images.generate({
+                        model: IMAGE_MODEL,
+                        prompt: parsed.image_gen_prompt,
+                        size: '1024x1024',
+                    })
+
+                    const image_base64 = result.data[0]?.b64_json
+                    if (!image_base64) throw new Error('No image returned from OpenAI')
+
+                    const uploadRes = await cloudinary.v2.uploader.upload(
+                        `data:image/png;base64,${image_base64}`,
+                        { folder: process.env.CLOUDINARY_FOLDER }
                     )
-                    if (contentMatch && contentMatch[1]) {
-                        const extractedContent = contentMatch[1]
-                        if (extractedContent.length > lastSentContentLength) {
-                            const newContent = extractedContent.slice(lastSentContentLength)
-                            const contentChunk = JSON.stringify({
-                                content: newContent,
-                                streaming: true,
-                            })
-                            controller.enqueue(
-                                new TextEncoder().encode(`data: ${contentChunk}\n\n`)
-                            )
-                            lastSentContentLength = extractedContent.length
-                        }
+
+                    yield {
+                        image_status: 'done',
+                        image_data: image_base64,
+                        image_url: uploadRes.secure_url,
+                        image_prompt: parsed.image_gen_prompt,
                     }
-
-                    // Try to parse completed JSON
-                    try {
-                        const parsed = JSON.parse(accumulatedContent)
-
-                        console.log('parsed', parsed)
-
-                        const responseChunk = JSON.stringify({
-                            content: parsed.content,
-                            reasoning: parsed.reasoning,
-                            complete: true,
-                        })
-                        controller.enqueue(new TextEncoder().encode(`data: ${responseChunk}\n\n`))
-
-                        if (parsed.image_gen_prompt && !imageGenerationTriggered) {
-                            imageGenerationTriggered = true
-
-                            const startChunk = JSON.stringify({
-                                image_status: 'gen',
-                                image_prompt: parsed.image_gen_prompt,
-                            })
-                            controller.enqueue(new TextEncoder().encode(`data: ${startChunk}\n\n`))
-
-                            try {
-                                console.log('entering image gen')
-                                const result = await openai.images.generate({
-                                    model: IMAGE_MODEL,
-                                    prompt: parsed.image_gen_prompt,
-                                    size: '1024x1024',
-                                })
-
-                                if (!result?.data || !result?.data[0]?.b64_json) {
-                                    throw new Error('OpenAI did not return b64_json for the image')
-                                }
-
-                                const image_base64 = result.data[0].b64_json
-
-                                const uploadRes = await cloudinary.v2.uploader.upload(
-                                    `data:image/png;base64,${image_base64}`,
-                                    {
-                                        folder: process.env.CLOUDINARY_FOLDER,
-                                    }
-                                )
-
-                                const doneChunk = JSON.stringify({
-                                    image_status: 'done',
-                                    image_data: image_base64,
-                                    image_prompt: parsed.image_gen_prompt,
-                                    image_url: uploadRes.secure_url,
-                                })
-
-                                controller.enqueue(
-                                    new TextEncoder().encode(`data: ${doneChunk}\n\n`)
-                                )
-                            } catch (imageError) {
-                                console.error(imageError)
-                                const errorChunk = JSON.stringify({
-                                    image_status: 'error',
-                                    image_error: imageError.message,
-                                })
-                                controller.enqueue(
-                                    new TextEncoder().encode(`data: ${errorChunk}\n\n`)
-                                )
-                            }
-                        }
-
-                        break
-                    } catch {
-                        // incomplete JSON, continue
-                    }
+                } catch (imageErr) {
+                    yield { image_status: 'error', image_error: imageErr.message }
                 }
-
-                if (
-                    accumulatedContent.trim() &&
-                    !accumulatedContent.includes('"image_gen_prompt"')
-                ) {
-                    const contentMatch = accumulatedContent.match(
-                        /"content":\s*"([^"\\]*(\\.[^"\\]*)*)"?/
-                    )
-                    const reasoningMatch = accumulatedContent.match(
-                        /"reasoning":\s*"([^"\\]*(\\.[^"\\]*)*)"?/
-                    )
-
-                    if (contentMatch || reasoningMatch) {
-                        const fallbackChunk = JSON.stringify({
-                            content: contentMatch ? contentMatch[1] : '',
-                            reasoning: reasoningMatch ? reasoningMatch[1] : 'Incomplete response',
-                            complete: true,
-                            recovered: true,
-                        })
-                        controller.enqueue(new TextEncoder().encode(`data: ${fallbackChunk}\n\n`))
-                    } else {
-                        const rawChunk = JSON.stringify({
-                            content: accumulatedContent,
-                            reasoning: 'Failed to parse structured response',
-                            complete: true,
-                            raw: true,
-                        })
-                        controller.enqueue(new TextEncoder().encode(`data: ${rawChunk}\n\n`))
-                    }
-                }
-
-                console.log('sneihg dont')
-
-                controller.enqueue(
-                    new TextEncoder().encode(`data: ${JSON.stringify({ done: true })}\n\n`)
-                )
-            } catch (err) {
-                const errorChunk = JSON.stringify({
-                    error: err.message,
-                    complete: true,
-                })
-                controller.enqueue(new TextEncoder().encode(`data: ${errorChunk}\n\n`))
-            } finally {
-                controller.close()
             }
-        },
-    })
 
-    console.log('idk')
+            // Send final parsed JSON
+            yield {
+                content: parsed.content,
+                reasoning: parsed.reasoning,
+                complete: true,
+            }
+            break
+        } catch {
+            // JSON incomplete, continue streaming
+        }
+    }
 
-    return new Response(stream, {
-        headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-        },
-    })
+    // Fallback if parsing never succeeded
+    if (!accumulatedContent.includes('"content"')) {
+        yield {
+            content: accumulatedContent,
+            reasoning: 'Failed to parse structured JSON',
+            complete: true,
+        }
+    }
 }
