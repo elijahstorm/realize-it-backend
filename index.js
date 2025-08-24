@@ -1,37 +1,35 @@
 import { handleDesignRequest } from './app/designer-agent.js'
+import cors from 'cors'
 import { configDotenv } from 'dotenv'
+import express from 'express'
 
 configDotenv()
 
-function withCORS(res) {
-    res.headers.set('Access-Control-Allow-Origin', '*')
-    res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-    res.headers.set('Access-Control-Allow-Headers', '*')
-    return res
-}
+const app = express()
+const PORT = process.env.PORT || 8080
 
-const server = Bun.serve({
-    idleTimeout: 0,
-    port: Number(process.env.PORT) || 8080,
-    async fetch(req) {
-        const url = new URL(req.url)
+// Middleware
+app.use(cors())
+app.use(express.json())
 
-        // Handle preflight CORS
-        if (req.method === 'OPTIONS') {
-            return withCORS(new Response(null, { status: 204 }))
-        }
+// Health check
+app.get('/health', (req, res) => res.send('OK'))
 
-        if (url.pathname === '/health') {
-            return withCORS(new Response('OK', { status: 200 }))
-        }
-
-        if (url.pathname === '/api/gen-image' && req.method === 'POST') {
-            const body = await req.json()
-            return withCORS(await handleDesignRequest(body))
-        }
-
-        return new Response('Not Found', { status: 404 })
-    },
+// API endpoint
+app.post('/api/gen-image', async (req, res) => {
+    try {
+        const response = await handleDesignRequest(req.body)
+        res.json(response)
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: 'Internal Server Error' })
+    }
 })
 
-console.log(`🚀 Server running at http://localhost:${server.port}`)
+// Fallback route
+app.use((req, res) => res.status(404).send('Not Found'))
+
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`)
+})
