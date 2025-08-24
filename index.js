@@ -12,6 +12,14 @@ const PORT = process.env.PORT || 8080
 app.use(cors())
 app.use(express.json())
 
+app.use(
+    cors({
+        origin: '*',
+        methods: ['GET', 'POST', 'OPTIONS'],
+        allowedHeaders: ['Content-Type'],
+    })
+)
+
 // Health check
 app.get('/health', (req, res) => res.send('OK'))
 
