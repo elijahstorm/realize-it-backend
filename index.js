@@ -29,9 +29,8 @@ app.post('/api/gen-image', async (req, res) => {
         res.end()
     } catch (err) {
         console.error(err)
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'Internal Server Error' })
-        } else {
+        if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' })
+        else {
             res.write(JSON.stringify({ error: 'Internal Server Error' }))
             res.end()
         }

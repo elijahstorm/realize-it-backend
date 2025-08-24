@@ -1,7 +1,7 @@
 import cloudinary from 'cloudinary'
 import OpenAI from 'openai'
 
-export async function handleDesignRequest(body) {
+export async function* handleDesignRequest(body) {
     cloudinary.v2.config({
         cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
         api_key: process.env.CLOUDINARY_API_KEY,
@@ -48,13 +48,9 @@ Do not include any text outside of this JSON structure or the tool will break.`
                 let lastSentContentLength = 0
                 let imageGenerationTriggered = false
 
-                console.log('entering')
-
                 for await (const chunk of chatCompletion) {
                     const content = chunk.choices[0]?.delta?.content || ''
                     accumulatedContent += content
-
-                    console.log('채ㅜㅅ둣', content)
 
                     // Progressive streaming
                     const contentMatch = accumulatedContent.match(
@@ -78,8 +74,6 @@ Do not include any text outside of this JSON structure or the tool will break.`
                     // Try to parse completed JSON
                     try {
                         const parsed = JSON.parse(accumulatedContent)
-
-                        console.log('parsed', parsed)
 
                         const responseChunk = JSON.stringify({
                             content: parsed.content,
@@ -175,8 +169,6 @@ Do not include any text outside of this JSON structure or the tool will break.`
                     }
                 }
 
-                console.log('sneihg dont')
-
                 controller.enqueue(
                     new TextEncoder().encode(`data: ${JSON.stringify({ done: true })}\n\n`)
                 )
@@ -191,8 +183,6 @@ Do not include any text outside of this JSON structure or the tool will break.`
             }
         },
     })
-
-    console.log('idk')
 
     return new Response(stream, {
         headers: {
